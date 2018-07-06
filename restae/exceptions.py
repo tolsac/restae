@@ -33,3 +33,7 @@ class ValidationError(Exception):
 
 class SerializerError(Exception):
     pass
+
+
+class DispatchError(Exception):
+    pass

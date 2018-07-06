@@ -39,6 +39,6 @@ class JsonResponse(CorsResponse):
         if isinstance(data, collections.Mapping):
             self.body = json.dumps(data)
         elif isinstance(data, six.string_types):
-            self.body = {
+            self.body = json.dumps({
                 'message': data
-            }
+            })

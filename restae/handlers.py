@@ -7,15 +7,12 @@ import logging
 
 from exceptions import NotFound, NotAuthorized, Forbidden, MissingParameter, BadRequest, MissingBody
 from response import CorsResponse, JsonResponse
-from helpers import get_object_from_urlsafe
+from helpers import get_object_from_urlsafe, get_middlewares, cached_property, get_key_from_urlsafe
+from restae.exceptions import DispatchError
 
 
-class APIHandler(webapp2.RequestHandler):
-    pass
-
-
-class BaseHandler(APIHandler):
-    """ 
+class BaseHandler(webapp2.RequestHandler):
+    """
     BaseHandler with some intelligence & automation
     """
     model = None
@@ -27,13 +24,43 @@ class BaseHandler(APIHandler):
         self.route_args = {}
         self.user = None
 
+    def get(self, *args, **kwargs):
+        raise NotImplementedError
+
+    def post(self, *args, **kwargs):
+        raise NotImplementedError
+
+    def head(self, *args, **kwargs):
+        raise NotImplementedError
+
     def options(self, *args, **kwargs):
-        return CorsResponse()
+        raise NotImplementedError
+
+    def put(self, *args, **kwargs):
+        raise NotImplementedError
+
+    def delete(self, *args, **kwargs):
+        raise NotImplementedError
+
+    def trace(self, *args, **kwargs):
+        raise NotImplementedError
+
+    @cached_property
+    def middlewares(self):
+        return get_middlewares()
 
     def dispatch(self):
         try:
-            self.route_args = self.request.route.regex.search(self.request.upath_info).groupdict()
-            return super(BaseHandler, self).dispatch()
+            for middleware in self.middlewares:
+                middleware.process_request(self.request)
+
+            self.route_args = self.get_route_args()
+            response = super(BaseHandler, self).dispatch()
+
+            for middleware in self.middlewares:
+                middleware.process_response(self.request, response)
+
+            return response
         except NotFound as nf:
             return JsonResponse(status=404, data=str(nf) or 'Not found')
         except NotAuthorized as na:
@@ -104,6 +131,95 @@ class BaseHandler(APIHandler):
                 raise NotFound
         finally:
             return _object
+
+
+class APIHandler(BaseHandler):
+    def options(self, *args, **kwargs):
+        return CorsResponse()
+
+
+class APIModelHandler(APIHandler):
+    model = None
+    queryset = None
+    serializer_class = None
+    
+    def list(self, request, **kwargs):
+        return JsonResponse(data=self.serializer_class(self.queryset, many=True).data)
+
+    def create(self, request, **kwargs):
+        obj = self.model(**self.serializer_class(data=self.get_body()).data)
+        obj.put()
+        return JsonResponse(data=self.serializer_class(obj).data)
+
+    def retrieve(self, request, key=None):
+        try:
+            obj = key.get()
+            if obj is None:
+                raise NotFound
+        except Exception:
+            raise NotFound
+
+        return JsonResponse(self.serializer_class(obj).data)
+
+    def update(self, request, key=None):
+        raise NotImplementedError
+
+    def partial_update(self, request, key=None):
+        raise NotImplementedError
+
+    def destroy(self, request, key=None):
+        key.delete()
+        return JsonResponse()
+
+    def dispatch(self):
+        """
+        Dispatches the request.
+
+        This will first check if there's a handler_method defined in the
+        matched route, and if not it'll use the method correspondent to the
+        request method (``get()``, ``post()`` etc).
+        """
+        route_args = self.get_route_args()
+        route_kwargs = {}
+
+        has_target = 'urlsafe' in route_args
+
+        if has_target:
+            try:
+                route_kwargs['key'] = get_key_from_urlsafe(route_args['urlsafe'])
+            except Exception:
+                return JsonResponse(status=400, data='Given urlsafe is invalid')
+
+            if self.request.method == 'GET':
+                method_name = 'retrieve'
+            elif self.request.method == 'POST':
+                method_name = 'update'
+            elif self.request.method == 'PUT':
+                method_name = 'update'
+            elif self.request.method == 'DELETE':
+                method_name = 'destroy'
+            else:
+                raise DispatchError('Invalid method / arguments')
+        else:
+            if self.request.method == 'GET':
+                method_name = 'list'
+            elif self.request.method == 'POST':
+                method_name = 'create'
+            else:
+                raise DispatchError('Invalid method / arguments')
+
+        method = getattr(self, method_name, None)
+        # The handler only receives *args if no named variables are set.
+        args, kwargs = route_args, route_kwargs
+        if kwargs:
+            args = ()
+
+        try:
+            return method(self, *args, **kwargs)
+        except Exception, e:
+            return self.handle_exception(e, self.app.debug)
+
+
 
 
 

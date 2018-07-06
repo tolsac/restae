@@ -19,3 +19,6 @@ RESTAE_SETTINGS = {
         ''
     )
 }
+
+settings = Settings()
+settings.override(RESTAE_SETTINGS)
