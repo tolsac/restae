@@ -4,11 +4,11 @@ Rest helpers
 import importlib
 import threading
 
-from google.appengine.ext.ndb import Key
+from google.appengine.ext import ndb
 
 from restae.conf import settings
 
-KEY_CLASS = Key
+KEY_CLASS = ndb.Key
 
 
 class cached_property(object):
@@ -65,7 +65,16 @@ def get_key_from_urlsafe(urlsafe):
     """
     Build a Key with given urlsafe
     """
-    return Key(urlsafe=urlsafe)
+    return ndb.Key(urlsafe=urlsafe)
+
+
+def get_model_class_from_query(query):
+    """
+    Return model class from any query.
+    Note that the model needs to be imported once
+    in the application
+    """
+    return ndb.Model._lookup_model(query.kind)
 
 
 def get_object_from_urlsafe(urlsafe):

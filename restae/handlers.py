@@ -7,7 +7,8 @@ import logging
 
 from exceptions import NotFound, NotAuthorized, Forbidden, MissingParameter, BadRequest, MissingBody
 from response import CorsResponse, JsonResponse
-from helpers import get_object_from_urlsafe, get_middlewares, cached_property, get_key_from_urlsafe
+from helpers import get_object_from_urlsafe, get_middlewares, cached_property, get_key_from_urlsafe, \
+    get_model_class_from_query
 from restae.exceptions import DispatchError
 
 
@@ -139,15 +140,15 @@ class APIHandler(BaseHandler):
 
 
 class APIModelHandler(APIHandler):
-    model = None
     queryset = None
     serializer_class = None
-    
+
     def list(self, request, **kwargs):
-        return JsonResponse(data=self.serializer_class(self.queryset, many=True).data)
+        return JsonResponse(data=self.serializer_class(self.queryset.fetch(), many=True).data)
 
     def create(self, request, **kwargs):
-        obj = self.model(**self.serializer_class(data=self.get_body()).data)
+        _model = get_model_class_from_query(self.queryset)
+        obj = _model(**self.serializer_class(data=self.get_body()).data)
         obj.put()
         return JsonResponse(data=self.serializer_class(obj).data)
 
@@ -159,7 +160,7 @@ class APIModelHandler(APIHandler):
         except Exception:
             raise NotFound
 
-        return JsonResponse(self.serializer_class(obj).data)
+        return JsonResponse(data=self.serializer_class(obj).data)
 
     def update(self, request, key=None):
         raise NotImplementedError
@@ -215,7 +216,15 @@ class APIModelHandler(APIHandler):
             args = ()
 
         try:
-            return method(self, *args, **kwargs)
+            for middleware in self.middlewares:
+                middleware.process_request(self.request)
+
+            response = method(self, *args, **kwargs)
+
+            for middleware in self.middlewares:
+                middleware.process_response(self.request, response)
+
+            return response
         except Exception, e:
             return self.handle_exception(e, self.app.debug)
 

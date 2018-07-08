@@ -36,9 +36,11 @@ class JsonResponse(CorsResponse):
         super(JsonResponse, self).__init__(*args, **kwargs)
         self.headers['Content-type'] = 'application/json'
 
-        if isinstance(data, collections.Mapping):
+        if isinstance(data, (collections.Mapping, list, set, tuple)):
             self.body = json.dumps(data)
         elif isinstance(data, six.string_types):
             self.body = json.dumps({
                 'message': data
             })
+        else:
+            self.body = data

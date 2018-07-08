@@ -75,10 +75,12 @@ class Field(object):
                 for value in values
             ]
         else:
-            return self.input(values)
+            return self.output(values)
 
     def validate_base_type(self, value):
-        return isinstance(value, self.base_type)
+        if self.base_type is not None:
+            return isinstance(value, self.base_type)
+        return True
 
     def serialize(self):
         """
@@ -90,7 +92,7 @@ class Field(object):
         elif self.object is None and self._data is not None:
             return self.input_many(self._data)
         else:
-            raise SerializerError('If no positional argument are passed, you must use data= attribute')
+            raise SerializerError('If no positional argument are passed, you must use data= kwarg')
 
     @property
     def data(self):
@@ -174,6 +176,17 @@ class DatetimeField(Field):
         return value.isoformat()
 
 
+TYPE_MAPPING = {
+    'IntegerProperty': IntegerField,
+    'FloatProperty': FloatField,
+    'BooleanProperty': BooleanField,
+    'StringProperty': StringField,
+    'TextProperty': StringField,
+    'DateTimeProperty': DatetimeField,
+    'KeyProperty': KeyField
+}
+
+
 class Serializer(Field):
     def get_class_fields(self):
         _attrs = {}
@@ -211,4 +224,23 @@ class Serializer(Field):
 
         return payload
 
+
+class ModelSerializer(Serializer):
+    def get_class_fields(self):
+        _attrs = {}
+
+        _meta = getattr(self, 'Meta', None)
+        if _meta.fields == '__all__':
+            _fields = _meta.model._properties.keys()
+        else:
+            _fields = _meta.fields
+
+        for field in _fields:
+            try:
+                _attrs[field] = TYPE_MAPPING[_meta.model._properties[field].__class__.__name__]()
+            except KeyError:
+                raise SerializerError('Field {} doest nor exists on {} or its type is not supported yet'.format(
+                    field, _meta.model.__class__.__name__
+                ))
+        return _attrs
 
