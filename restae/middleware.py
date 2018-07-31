@@ -11,10 +11,10 @@ class Middleware(object):
         """
         Will be called before handler
         """
-        raise NotImplementedError
+        pass
 
     def process_response(self, request, response):
         """
         Will be called after handler
         """
-        raise NotImplementedError
+        pass

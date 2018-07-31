@@ -37,3 +37,7 @@ class SerializerError(Exception):
 
 class DispatchError(Exception):
     pass
+
+
+class InvalidPage(Exception):
+    pass

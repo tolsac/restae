@@ -26,5 +26,4 @@ class Router(object):
         """
         Add handler urls to router
         """
-        # if issubclass(handler_class, APIModelHandler):
         self.urls.extend(self.get_urls_api_model(handler_name, handler_class))

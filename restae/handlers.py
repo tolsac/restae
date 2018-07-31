@@ -5,10 +5,13 @@ import traceback
 import webapp2
 import logging
 
+from webob import Response
+
 from exceptions import NotFound, NotAuthorized, Forbidden, MissingParameter, BadRequest, MissingBody
 from response import CorsResponse, JsonResponse
 from helpers import get_object_from_urlsafe, get_middlewares, cached_property, get_key_from_urlsafe, \
-    get_model_class_from_query
+    get_model_class_from_query, load_class
+from restae.conf import DEFAULT_PAGINATION_CLASS
 from restae.exceptions import DispatchError
 
 
@@ -25,38 +28,20 @@ class BaseHandler(webapp2.RequestHandler):
         self.route_args = {}
         self.user = None
 
-    def get(self, *args, **kwargs):
-        raise NotImplementedError
-
-    def post(self, *args, **kwargs):
-        raise NotImplementedError
-
-    def head(self, *args, **kwargs):
-        raise NotImplementedError
-
-    def options(self, *args, **kwargs):
-        raise NotImplementedError
-
-    def put(self, *args, **kwargs):
-        raise NotImplementedError
-
-    def delete(self, *args, **kwargs):
-        raise NotImplementedError
-
-    def trace(self, *args, **kwargs):
-        raise NotImplementedError
-
     @cached_property
     def middlewares(self):
         return get_middlewares()
 
     def dispatch(self):
+        return self.apply_dispatch()
+
+    def apply_dispatch(self):
         try:
             for middleware in self.middlewares:
                 middleware.process_request(self.request)
 
             self.route_args = self.get_route_args()
-            response = super(BaseHandler, self).dispatch()
+            response = self.do_dispatch()
 
             for middleware in self.middlewares:
                 middleware.process_response(self.request, response)
@@ -76,6 +61,17 @@ class BaseHandler(webapp2.RequestHandler):
             return JsonResponse(status=400, data=str(mb) or 'Request is missing a body')
         except ValueError as ve:
             return JsonResponse(status=400, data=str(ve) or 'Value error')
+        except DispatchError:
+            return Response(status=404)
+        except Exception as err:
+            logging.error('%s: %s',
+                          err.__class__.__name__,
+                          str(err))
+            logging.error(traceback.format_exc())
+            return self.handle_exception(err, self.app.debug)
+
+    def do_dispatch(self):
+        return super(BaseHandler, self).dispatch()
 
     def get_body(self):
         if self.request.body:
@@ -89,6 +85,15 @@ class BaseHandler(webapp2.RequestHandler):
 
     def get_route_args(self):
         return self.request.route.regex.search(self.request.upath_info).groupdict()
+
+
+class APIModelBaseHandler(BaseHandler):
+    """
+
+    """
+    queryset = None
+    serializer_class = None
+    pagination_class = load_class(DEFAULT_PAGINATION_CLASS)
 
     def get_object(self, urlsafe=None, query_param=None, lookup_field=None, raise_exception=True):
         _object = None
@@ -133,25 +138,78 @@ class BaseHandler(webapp2.RequestHandler):
         finally:
             return _object
 
+    @property
+    def paginator(self):
+        """
+        The paginator instance associated with the view, or `None`.
+        """
+        if not hasattr(self, '_paginator'):
+            if self.pagination_class is None:
+                self._paginator = None
+            else:
+                self._paginator = self.pagination_class()
+        return self._paginator
+
+    def paginate_queryset(self, queryset):
+        """
+        Return a single page of results, or `None` if pagination is disabled.
+        """
+        if self.paginator is None:
+            return None
+        return self.paginator.paginate_queryset(queryset, self.request, view=self)
+
+    def get_paginated_response(self, data):
+        """
+        Return a paginated style `Response` object for the given output data.
+        """
+        assert self.paginator is not None
+        return self.paginator.get_paginated_response(data)
+
 
 class APIHandler(BaseHandler):
     def options(self, *args, **kwargs):
         return CorsResponse()
 
+    def get(self, *args, **kwargs):
+        raise NotImplemented
 
-class APIModelHandler(APIHandler):
-    queryset = None
-    serializer_class = None
+    def post(self, *args, **kwargs):
+        raise NotImplemented
 
+    def patch(self, *args, **kwargs):
+        raise NotImplemented
+
+    def delete(self, *args, **kwargs):
+        raise NotImplemented
+
+    def head(self, *args, **kwargs):
+        raise NotImplemented
+
+    def trace(self, *args, **kwargs):
+        raise NotImplemented
+
+
+class APIModelListHandler(APIModelBaseHandler):
     def list(self, request, **kwargs):
-        return JsonResponse(data=self.serializer_class(self.queryset.fetch(), many=True).data)
+        page = self.paginate_queryset(self.queryset)
 
+        if page is not None:
+            serializer = self.serializer_class(page, many=True)
+            return self.get_paginated_response(serializer.data)
+
+        serializer = self.serializer_class(self.queryset, many=True)
+        return Response(serializer.data)
+
+
+class APIModelCreateHandler(APIModelBaseHandler):
     def create(self, request, **kwargs):
         _model = get_model_class_from_query(self.queryset)
         obj = _model(**self.serializer_class(data=self.get_body()).data)
         obj.put()
         return JsonResponse(data=self.serializer_class(obj).data)
 
+
+class APIModelRetrieveHandler(APIModelBaseHandler):
     def retrieve(self, request, key=None):
         try:
             obj = key.get()
@@ -162,17 +220,34 @@ class APIModelHandler(APIHandler):
 
         return JsonResponse(data=self.serializer_class(obj).data)
 
+
+class APIModelUpdateHandler(APIModelBaseHandler):
     def update(self, request, key=None):
         raise NotImplementedError
 
+
+class APIModelPatchHandler(APIModelBaseHandler):
     def partial_update(self, request, key=None):
         raise NotImplementedError
 
+
+class APIModelDestroyHandler(APIModelBaseHandler):
     def destroy(self, request, key=None):
         key.delete()
         return JsonResponse()
 
-    def dispatch(self):
+
+class APIModelMixinHandler(APIModelListHandler,
+                           APIModelCreateHandler,
+                           APIModelDestroyHandler,
+                           APIModelRetrieveHandler,
+                           APIModelUpdateHandler,
+                           APIModelPatchHandler):
+    pass
+
+
+class APIModelHandler(APIModelMixinHandler):
+    def do_dispatch(self):
         """
         Dispatches the request.
 
@@ -196,7 +271,7 @@ class APIModelHandler(APIHandler):
             elif self.request.method == 'POST':
                 method_name = 'update'
             elif self.request.method == 'PUT':
-                method_name = 'update'
+                method_name = 'partial_update'
             elif self.request.method == 'DELETE':
                 method_name = 'destroy'
             else:
@@ -215,20 +290,4 @@ class APIModelHandler(APIHandler):
         if kwargs:
             args = ()
 
-        try:
-            for middleware in self.middlewares:
-                middleware.process_request(self.request)
-
-            response = method(self, *args, **kwargs)
-
-            for middleware in self.middlewares:
-                middleware.process_response(self.request, response)
-
-            return response
-        except Exception, e:
-            return self.handle_exception(e, self.app.debug)
-
-
-
-
-
+        return method(self, *args, **kwargs)

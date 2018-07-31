@@ -14,10 +14,15 @@ class Settings(dict):
         self.update(_settings)
 
 
+DEFAULT_PAGE_SIZE = 5
+DEFAULT_PAGINATION_CLASS = 'restae.pagination.CursorPagination'
+
 RESTAE_SETTINGS = {
     'MIDDLEWARE_CLASSES': (
         ''
-    )
+    ),
+    'PAGINATION_CLASS': 'restae.pagination.CursorPagination',
+    'PAGE_SIZE': DEFAULT_PAGE_SIZE
 }
 
 settings = Settings()

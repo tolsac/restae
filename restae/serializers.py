@@ -218,10 +218,11 @@ class Serializer(Field):
         payload = {}
 
         for attr, field in self.get_class_fields().iteritems():
+            _source = field.source or attr
             payload.update({
-                attr: field.output_many(getattr(obj, attr))
+                attr: field.output_many(getattr(obj, _source))
             })
-
+        payload['key'] = obj.key.urlsafe()
         return payload
 
 
@@ -236,11 +237,14 @@ class ModelSerializer(Serializer):
             _fields = _meta.fields
 
         for field in _fields:
-            try:
-                _attrs[field] = TYPE_MAPPING[_meta.model._properties[field].__class__.__name__]()
-            except KeyError:
-                raise SerializerError('Field {} doest nor exists on {} or its type is not supported yet'.format(
-                    field, _meta.model.__class__.__name__
-                ))
+            if field == 'key':
+                _attrs[field] = KeyField()
+            else:
+                try:
+                    _attrs[field] = TYPE_MAPPING[_meta.model._properties[field].__class__.__name__]()
+                except KeyError:
+                    raise SerializerError('Field {} doest not exists on {} or its type is not supported yet'.format(
+                        field, _meta.model.__class__.__name__
+                    ))
         return _attrs
 
