@@ -9,5 +9,5 @@ install:
   - pip install -r requirements.txt
 
 script:
-#  - export PYTHONPATH=${PYTHONPATH}:${HOME}/google-cloud-sdk/platform/google_appengine:${HOME}/google-cloud-sdk/platform/google_appengine/lib:${HOME}/google-cloud-sdk/platform/google_appengine/lib/protorpc-1.0
+  - export PYTHONPATH=$PYTHONPATH:${HOME}/google-cloud-sdk/platform/google_appengine:${HOME}/google-cloud-sdk/platform/google_appengine/lib:${HOME}/google-cloud-sdk/platform/google_appengine/lib/protorpc-1.0
   - python -m unittest discover -p '*_test.py' "restae"
