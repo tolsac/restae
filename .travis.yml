@@ -11,4 +11,5 @@ before_script:
 
 script:
   - export PYTHONPATH=${PYTHONPATH}:${HOME}/google-cloud-sdk/platform/google_appengine:${HOME}/google-cloud-sdk/platform/google_appengine/lib:${HOME}/google-cloud-sdk/platform/google_appengine/lib/protorpc-1.0
+  - env
   - python -m unittest discover -p '*_test.py' "restae"
