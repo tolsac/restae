@@ -2,4 +2,12 @@ language: python
 python:
   - "2.7"
 
+install:
+  - nvm install 8
+  - ./prepare-dev
+  - echo "Installing google-cloud-sdk" && curl -sL https://dl.google.com/dl/cloudsdk/channels/rapid/google-cloud-sdk.tar.gz | tar xfz - -C ${HOME}
+
+before_script:
+  - source "$HOME/google-cloud-sdk/path.bash.inc"
+
 script: python -m unittest discover -p '*_test.py' "restae"
