@@ -5,6 +5,7 @@ python:
 env:
   global:
     - PYTHONPATH=${HOME}/google-cloud-sdk/platform/google_appengine:${HOME}/google-cloud-sdk/platform/google_appengine/lib:${HOME}/google-cloud-sdk/platform/google_appengine/lib/protorpc-1.0
+    - PATH=${PATH}:${PYTHONPATH}
 
 install:
   - curl -sL https://dl.google.com/dl/cloudsdk/channels/rapid/google-cloud-sdk.tar.gz | tar xfz - -C ${HOME}
@@ -13,4 +14,6 @@ install:
 before_script:
   - source "$HOME/google-cloud-sdk/path.bash.inc"
 
-script: python -m unittest discover -p '*_test.py' "restae"
+script:
+  - env
+  - python -m unittest discover -p '*_test.py' "restae"
