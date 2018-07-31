@@ -2,3 +2,4 @@ six==1.11.0
 webapp2==2.5.2
 WebOb==1.8.2
 WebTest==2.0.30
+dateutils==0.6.6

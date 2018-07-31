@@ -4,12 +4,10 @@ python:
 
 install:
   - curl -sL https://dl.google.com/dl/cloudsdk/channels/rapid/google-cloud-sdk.tar.gz | tar xfz - -C ${HOME}
-  - source "$HOME/google-cloud-sdk/path.bash.inc" && gcloud components install app-engine-python -q
+  - source "$HOME/google-cloud-sdk/path.bash.inc"
+  - gcloud components install app-engine-python -q
   - pip install -r requirements.txt
 
-#before_script:
-#  - source "$HOME/google-cloud-sdk/path.bash.inc"
-
 script:
-  - export PYTHONPATH=${PYTHONPATH}:${HOME}/google-cloud-sdk/platform/google_appengine:${HOME}/google-cloud-sdk/platform/google_appengine/lib:${HOME}/google-cloud-sdk/platform/google_appengine/lib/protorpc-1.0
+#  - export PYTHONPATH=${PYTHONPATH}:${HOME}/google-cloud-sdk/platform/google_appengine:${HOME}/google-cloud-sdk/platform/google_appengine/lib:${HOME}/google-cloud-sdk/platform/google_appengine/lib/protorpc-1.0
   - python -m unittest discover -p '*_test.py' "restae"
