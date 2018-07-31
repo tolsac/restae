@@ -4,6 +4,7 @@ python:
 
 install:
   - curl -sL https://dl.google.com/dl/cloudsdk/channels/rapid/google-cloud-sdk.tar.gz | tar xfz - -C ${HOME}
+  - pip install -r requirements.txt
 
 before_script:
   - source "$HOME/google-cloud-sdk/path.bash.inc"
