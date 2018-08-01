@@ -1,4 +1,6 @@
-""" import modules """
+"""
+Handlers modules
+"""
 import json
 import traceback
 
@@ -30,12 +32,42 @@ class BaseHandler(webapp2.RequestHandler):
 
     @cached_property
     def middlewares(self):
+        """
+        Cached property that load all middlewares
+
+        :return: :py:class:`list` of :py:class:`Middleware` instances
+        """
         return get_middlewares()
 
     def dispatch(self):
+        """
+        Function called to make the dispatch job.
+        Calls internally :py:meth:`restae.handlers.BaseHandler.apply_dispatch`
+
+        :return: :py:class:`webob.Response`
+        """
         return self.apply_dispatch()
 
     def apply_dispatch(self):
+        """
+        Does the hole mechanism of dispatch.
+
+        Loops over all middlewares before and after the dispatch method call
+
+
+        .. code-block:: python
+
+            for middleware in self.middlewares:
+                middleware.process_request(self.request)
+
+            self.route_args = self.get_route_args()
+            response = self.do_dispatch()
+
+            for middleware in self.middlewares:
+                middleware.process_response(self.request, response)
+
+        :return: :py:class:`webob.Response`
+        """
         try:
             for middleware in self.middlewares:
                 middleware.process_request(self.request)
@@ -71,9 +103,19 @@ class BaseHandler(webapp2.RequestHandler):
             return self.handle_exception(err, self.app.debug)
 
     def do_dispatch(self):
+        """
+        Function that does the dispatch job
+
+        :return: :py:class:`webob.Response`
+        """
         return super(BaseHandler, self).dispatch()
 
     def get_body(self):
+        """
+        Tries to parse the request body as JSON
+
+        :return: JSON serialized data as :py:class:`dict` instance.
+        """
         if self.request.body:
             try:
                 json_body = json.loads(self.request.body)
@@ -84,6 +126,23 @@ class BaseHandler(webapp2.RequestHandler):
         raise MissingBody('Request is missing a body')
 
     def get_route_args(self):
+        """
+        Parses the route arguments based on the router generated url
+
+        :return: route arguments in a :py:class:`dict` instance.
+
+        For instance if the view url is ``r'/resource/(?P<slug>[^/]+)/'`` and the calling url is ``GET /resource/my-slug/``
+
+        The returned dict will be formatted like this
+
+        .. code-block:: python
+
+           {'slug': 'my-slug'}
+
+        .. note::
+            Those route arguments are then available in each of the Handler methods in the self.route_args attribute
+
+        """
         return self.request.route.regex.search(self.request.upath_info).groupdict()
 
 
@@ -190,7 +249,15 @@ class APIHandler(BaseHandler):
 
 
 class APIModelListHandler(APIModelBaseHandler):
+    """
+    ModelHandler that perform a generic list operation
+    """
     def list(self, request, **kwargs):
+        """
+        List operation
+
+        :return: :py:class:`restae.response.JsonResponse`
+        """
         page = self.paginate_queryset(self.queryset)
 
         if page is not None:
@@ -202,7 +269,14 @@ class APIModelListHandler(APIModelBaseHandler):
 
 
 class APIModelCreateHandler(APIModelBaseHandler):
+    """
+    ModelHandler that perform a generic create operation
+    """
     def create(self, request, **kwargs):
+        """
+
+        :return: :py:class:`restae.response.JsonResponse`
+        """
         _model = get_model_class_from_query(self.queryset)
         obj = _model(**self.serializer_class(data=self.get_body()).data)
         obj.put()
@@ -210,7 +284,14 @@ class APIModelCreateHandler(APIModelBaseHandler):
 
 
 class APIModelRetrieveHandler(APIModelBaseHandler):
+    """
+    ModelHandler that perform a generic get operation
+    """
     def retrieve(self, request, key=None):
+        """
+
+        :return: :py:class:`restae.response.JsonResponse`
+        """
         try:
             obj = key.get()
             if obj is None:
@@ -222,17 +303,30 @@ class APIModelRetrieveHandler(APIModelBaseHandler):
 
 
 class APIModelUpdateHandler(APIModelBaseHandler):
+    """
+    ModelHandler that perform a generic update operation
+    """
     def update(self, request, key=None):
         raise NotImplementedError
 
 
 class APIModelPatchHandler(APIModelBaseHandler):
+    """
+    ModelHandler that perform a generic patch operation
+    """
     def partial_update(self, request, key=None):
         raise NotImplementedError
 
 
 class APIModelDestroyHandler(APIModelBaseHandler):
+    """
+    ModelHandler that perform a generic delete operation
+    """
     def destroy(self, request, key=None):
+        """
+
+        :return: :py:class:`restae.response.JsonResponse`
+        """
         key.delete()
         return JsonResponse()
 
