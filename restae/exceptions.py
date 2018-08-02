@@ -41,3 +41,7 @@ class DispatchError(Exception):
 
 class InvalidPage(Exception):
     pass
+
+
+class ImproperlyConfigured(Exception):
+    pass

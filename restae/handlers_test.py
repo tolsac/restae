@@ -10,6 +10,9 @@ import dev_appserver
 from webob import Response
 from webtest import AppError
 
+from restae.decorators import action
+from restae.response import JsonResponse
+
 sys.path = dev_appserver.EXTRA_PATHS + sys.path
 
 from google.appengine.ext import testbed, ndb
@@ -36,6 +39,66 @@ class UserModelSerializer(serializers.ModelSerializer):
 class UserHandler(APIModelHandler):
     queryset = UserModel.query()
     serializer_class = UserModelSerializer
+
+
+class DynamicUserHandler(APIModelHandler):
+    queryset = UserModel.query()
+    serializer_class = UserModelSerializer
+
+    @action(methods=['GET'], detail=False)
+    def toto(self, *args, **kwargs):
+        return Response(body='toto')
+
+    @action(methods=['GET'], detail=True)
+    def tata(self, *args, **kwargs):
+        entity = self.get_object()
+        return Response(body=entity.email)
+
+
+class DynamicAPIModelHandlerTestCase(unittest.TestCase):
+    def setUp(self):
+        self.testbed = testbed.Testbed()
+        self.testbed.activate()
+        self.testbed.init_datastore_v3_stub()
+        self.testbed.init_memcache_stub()
+
+        ndb.get_context().clear_cache()
+
+        router = Router()
+        router.register('user', DynamicUserHandler)
+        app = webapp2.WSGIApplication(router.urls)
+        self.testapp = webtest.TestApp(app)
+        self.entity = UserModel(
+            email='admin@restae.com',
+            first_name='admin',
+            last_name='restae',
+            age=28
+        )
+        self.entity.put()
+
+    def test_dispatch_toto(self):
+        response = self.testapp.get('/user/toto')
+        self.assertEquals(response.body, 'toto')
+
+    def test_dispatch_toto_bad_method(self):
+        response = self.testapp.put('/user/toto', expect_errors=True)
+        self.assertEquals(response.status_code, 404)
+
+    def test_dispatch_toto_slash(self):
+        response = self.testapp.get('/user/toto/')
+        self.assertEquals(response.body, 'toto')
+
+    def test_dispatch_tata(self):
+        response = self.testapp.get('/user/{}/tata'.format(self.entity.key.urlsafe()))
+        self.assertEquals(response.body, 'admin@restae.com')
+
+    def test_dispatch_tata_with_slash(self):
+        response = self.testapp.get('/user/{}/tata/'.format(self.entity.key.urlsafe()))
+        self.assertEquals(response.body, 'admin@restae.com')
+
+    def test_dispatch_tata_bad_method(self):
+        response = self.testapp.post('/user/{}/tata'.format(self.entity.key.urlsafe()), expect_errors=True)
+        self.assertEquals(response.status_code, 404)
 
 
 class APIModelHandlerTestCase(unittest.TestCase):
@@ -75,12 +138,12 @@ class APIModelHandlerTestCase(unittest.TestCase):
             response = self.testapp.put_json('/user/', {})
             self.assertEquals(response.status_code, 404)
 
-        self.testapp.put_json('/user/{}/'.format(self.entity.key.urlsafe()), {})
+        self.testapp.patch_json('/user/{}/'.format(self.entity.key.urlsafe()), {})
         mock_update.assert_called_once()
 
     @patch('restae.handlers.APIModelHandler.update', return_value=Response())
     def test_dispatch_update(self, mock_update):
-        self.testapp.post_json('/user/{}/'.format(self.entity.key.urlsafe()), {})
+        self.testapp.put_json('/user/{}/'.format(self.entity.key.urlsafe()), {})
         mock_update.assert_called_once()
 
     @patch('restae.handlers.APIModelHandler.destroy', return_value=Response())

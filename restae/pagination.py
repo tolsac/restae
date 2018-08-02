@@ -34,25 +34,26 @@ class CursorPagination(BasePagination):
     query parameters. For example:
     http://api.example.org/accounts/?page_token=<URLSAFE STRING>
     """
-    count = None
-    page = None
-    next_page_token = None
-    has_next = None
+    def __init__(self):
+        self.count = 0
+        self.page = None
+        self.next_page = None
+        self.has_next = None
+        self.request = None
 
-    def get_page_token(self, request):
-        return request.GET.get('page_token', None)
+    def get_page_token(self):
+        return self.request.GET.get('page_token', None)
 
     def paginate_queryset(self, queryset, request, view=None):
         """
         Paginate a queryset if required, either returning a
         page object, or `None` if pagination is not configured for this view.
         """
-
         self.count = queryset.count()
-
+        self.request = request
         try:
-            self.page, self.next_page_token, self.has_next = queryset.fetch_page(
-                self.get_page_size(request), start_cursor=Cursor(urlsafe=self.get_page_token(request)))
+            self.page, self.next_page, self.has_next = queryset.fetch_page(
+                self.get_page_size(request), start_cursor=Cursor(urlsafe=self.get_page_token()))
         except InvalidPage:
             raise NotFound('Requested page not found')
         except BadValueError as err:
@@ -64,14 +65,16 @@ class CursorPagination(BasePagination):
         return JsonResponse(data=OrderedDict([
             ('count', self.count),
             ('next', self.get_next_link()),
-            ('previous', self.get_previous_link()),
+            # ('previous', self.get_previous_link()),
             ('results', data)
         ]))
 
     def get_next_link(self):
         if not self.has_next:
             return None
-        return self.next_page_token.urlsafe()
+        return self.next_page.urlsafe()
 
-    def get_previous_link(self):
-        return None
+    # def get_previous_link(self):
+    #     if self.next_page is not None and self.get_page_token() is not None:
+    #         return self.next_page.reversed().urlsafe()
+    #     return None

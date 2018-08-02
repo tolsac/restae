@@ -2,6 +2,7 @@
 Handlers modules
 """
 import json
+import re
 import traceback
 
 import webapp2
@@ -145,11 +146,21 @@ class BaseHandler(webapp2.RequestHandler):
         """
         return self.request.route.regex.search(self.request.upath_info).groupdict()
 
+    @classmethod
+    def get_extra_actions(cls):
+        actions = []
+
+        for _method in cls.__dict__.values():
+            if getattr(_method, 'is_dynamic_action', False):
+                actions.append(_method)
+        return actions
+
 
 class APIModelBaseHandler(BaseHandler):
     """
 
     """
+    lookup_field = 'urlsafe'
     queryset = None
     serializer_class = None
     pagination_class = load_class(DEFAULT_PAGINATION_CLASS)
@@ -185,8 +196,8 @@ class APIModelBaseHandler(BaseHandler):
                     urlsafe = urlsafe_from_request
 
             _object = get_object_from_urlsafe(urlsafe)
-            if not _object.check_object_permissions(self.user):
-                raise NotAuthorized
+            # if not _object.check_object_permissions(self.user):
+            #     raise NotAuthorized
         except Exception as err:
             logging.error('Error in get_object: %s -> %s\n%s',
                           err.__class__.__name__,
@@ -351,34 +362,26 @@ class APIModelHandler(APIModelMixinHandler):
         """
         route_args = self.get_route_args()
         route_kwargs = {}
+        matched_url = None
 
-        has_target = 'urlsafe' in route_args
+        for url in getattr(self, 'urls', []):
+            if re.match(url.regex, self.request.path_info):
+                matched_url = url
+                break
 
-        if has_target:
+        if matched_url is None:
+            raise NotFound('URL not found on this server')
+
+        if matched_url.route.detail is True:
             try:
                 route_kwargs['key'] = get_key_from_urlsafe(route_args['urlsafe'])
             except Exception:
                 return JsonResponse(status=400, data='Given urlsafe is invalid')
 
-            if self.request.method == 'GET':
-                method_name = 'retrieve'
-            elif self.request.method == 'POST':
-                method_name = 'update'
-            elif self.request.method == 'PUT':
-                method_name = 'partial_update'
-            elif self.request.method == 'DELETE':
-                method_name = 'destroy'
-            else:
-                raise DispatchError('Invalid method / arguments')
-        else:
-            if self.request.method == 'GET':
-                method_name = 'list'
-            elif self.request.method == 'POST':
-                method_name = 'create'
-            else:
-                raise DispatchError('Invalid method / arguments')
+        if self.request.method.lower() not in matched_url.route.mapping.keys():
+            raise DispatchError('Invalid method {}'.format(self.request.method))
 
-        method = getattr(self, method_name, None)
+        method = getattr(self, matched_url.route.mapping[self.request.method.lower()], None)
         # The handler only receives *args if no named variables are set.
         args, kwargs = route_args, route_kwargs
         if kwargs:
