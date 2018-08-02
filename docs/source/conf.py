@@ -18,9 +18,6 @@ sys.path.insert(0, os.path.abspath('.'))
 sys.path.insert(0, os.path.abspath('..'))
 sys.path.insert(0, os.path.abspath('../..'))
 
-import dev_appserver
-sys.path = dev_appserver.EXTRA_PATHS + sys.path
-
 
 # -- Project information -----------------------------------------------------
 
