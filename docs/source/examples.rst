@@ -14,7 +14,7 @@ Any global settings for the API are kept in a single configuration dictionary na
 
         from restae.handlers import APIModelHandler
         from restae.router import Router
-        from restae.serializers import ModelSerializer, StringField, KeyField
+        from restae.serializers import ModelSerializer
 
 
         class User(ndb.Model):
