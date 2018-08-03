@@ -23,7 +23,7 @@ class CorsResponse(webob.Response):
             'Access-Control-Request-Headers'
         ])
         self.headers['Access-Control-Allow-Methods'] = ', '.join([
-            'POST', 'GET', 'PUT', 'DELETE'
+            'POST', 'GET', 'PUT', 'PATCH', 'DELETE'
         ])
 
 

@@ -23,11 +23,6 @@ Any global settings for the API are kept in a single configuration dictionary na
             last_name = ndb.StringProperty()
 
 
-        class UserSerializer(Serializer):
-            key = KeyField()
-            email = StringField()
-
-
         class UserModelSerializer(ModelSerializer):
             class Meta:
                 model = User
@@ -43,3 +38,27 @@ Any global settings for the API are kept in a single configuration dictionary na
         router.register('user', Handler)
 
         app = webapp2.WSGIApplication(router.urls)
+
+
+
+This will generate the following routes
+
+    .. code-block:: python
+
+        GET     /user/                         \ list action
+        GET     /user                          \ list action (idem without trailing slash)
+
+        GET     /user/<user key urlsafe>/      \ retrieve action
+        GET     /user/<user key urlsafe>       \ retrieve action (idem without trailing slash)
+
+        POST    /user/                         \ create action
+        POST    /user                          \ create action (idem without trailing slash)
+
+        PUT     /user/<user key urlsafe>/      \ update action
+        PUT     /user/<user key urlsafe>       \ update action (idem without trailing slash)
+
+        PATCH   /user/<user key urlsafe>/      \ partial_update action
+        PATCH   /user/<user key urlsafe>       \ partial_update action (idem without trailing slash)
+
+        DELETE  /user/<user key urlsafe>/      \ destroy action
+        DELETE  /user/<user key urlsafe>       \ destroy action (idem without trailing slash)
