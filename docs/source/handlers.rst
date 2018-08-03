@@ -1,4 +1,4 @@
-Internal modules
+Handlers
 ================
 
 Basically you do not need this API but if you are curious feel free to check

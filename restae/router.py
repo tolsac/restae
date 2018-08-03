@@ -16,6 +16,9 @@ def escape_curly_brackets(url_path):
 
 
 class Route(object):
+    """
+    A route mapping representation contains the URL, METHOD and route type
+    """
     def __init__(self, **kwargs):
         self.url = kwargs.pop('url')
         self.mapping = kwargs.get('mapping')
@@ -24,6 +27,9 @@ class Route(object):
 
 
 class Url(object):
+    """
+    An URL representation contains the Route and the destination Handler
+    """
     def __init__(self, **kwargs):
         self.route = kwargs.pop('route')
         self.regex = kwargs.pop('regex')

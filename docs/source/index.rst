@@ -13,11 +13,17 @@ Terms of content
 ----------------
 
 .. toctree::
-   :maxdepth: 2
+   :maxdepth: 3
 
    installation
    examples
-   internal-modules
+   handlers
+   router
+   middleware
+   pagination
+   response
+   serializers
+   decorators
 
 Indices and tables
 ==================
