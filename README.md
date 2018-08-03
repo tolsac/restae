@@ -14,7 +14,7 @@ Please checkout official documentation to get more information https://restae.re
 
         from restae.handlers import APIModelHandler
         from restae.router import Router
-        from restae.serializers import Serializer, ModelSerializer, StringField, KeyField
+        from restae.serializers import ModelSerializer, StringField, KeyField
 
 
         class User(ndb.Model):
