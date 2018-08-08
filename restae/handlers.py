@@ -29,6 +29,8 @@ class BaseHandler(webapp2.RequestHandler):
     def __init__(self, *args, **kwargs):
         super(BaseHandler, self).__init__(*args, **kwargs)
         self.route_args = {}
+        self.env = {}
+        self.query_params = {}
         self.user = None
 
     @cached_property
@@ -70,6 +72,9 @@ class BaseHandler(webapp2.RequestHandler):
         :return: :py:class:`webob.Response`
         """
         try:
+            self.query_params = dict(self.request.GET)
+            self.env = self.request.GET.env
+
             for middleware in self.middlewares:
                 middleware.process_request(self.request)
 
@@ -161,6 +166,7 @@ class APIModelBaseHandler(BaseHandler):
 
     """
     lookup_field = 'urlsafe'
+    lookup_value_regex = '[^/.]+'
     queryset = None
     serializer_class = None
     pagination_class = load_class(DEFAULT_PAGINATION_CLASS)
@@ -235,6 +241,18 @@ class APIModelBaseHandler(BaseHandler):
         assert self.paginator is not None
         return self.paginator.get_paginated_response(data)
 
+    def get_queryset(self):
+        """
+        Method used to retrieve the queryset. Must be overloaded for custom operations
+        """
+        return self.queryset
+
+    def get_serializer(self, *args, **kwargs):
+        """
+        Method used to retrieves the serializer. Must be overloaded for custom operations
+        """
+        return self.serializer_class(*args, **kwargs)
+
 
 class APIHandler(BaseHandler):
     def options(self, *args, **kwargs):
@@ -269,13 +287,13 @@ class APIModelListHandler(APIModelBaseHandler):
 
         :return: :py:class:`restae.response.JsonResponse`
         """
-        page = self.paginate_queryset(self.queryset)
+        page = self.paginate_queryset(self.get_queryset())
 
         if page is not None:
-            serializer = self.serializer_class(page, many=True)
+            serializer = self.get_serializer(page, many=True)
             return self.get_paginated_response(serializer.data)
 
-        serializer = self.serializer_class(self.queryset, many=True)
+        serializer = self.get_serializer()(self.get_queryset(), many=True)
         return Response(serializer.data)
 
 
@@ -288,10 +306,10 @@ class APIModelCreateHandler(APIModelBaseHandler):
 
         :return: :py:class:`restae.response.JsonResponse`
         """
-        _model = get_model_class_from_query(self.queryset)
-        obj = _model(**self.serializer_class(data=self.get_body()).data)
+        _model = get_model_class_from_query(self.get_queryset())
+        obj = _model(**self.get_serializer()(data=self.get_body()).data)
         obj.put()
-        return JsonResponse(data=self.serializer_class(obj).data)
+        return JsonResponse(data=self.get_serializer()(obj).data)
 
 
 class APIModelRetrieveHandler(APIModelBaseHandler):
@@ -318,7 +336,14 @@ class APIModelUpdateHandler(APIModelBaseHandler):
     ModelHandler that perform a generic update operation
     """
     def update(self, request, key=None):
-        raise NotImplementedError
+        try:
+            obj = key.get()
+            obj.update(self.get_body())
+            obj.put()
+
+            return JsonResponse(data=self.serializer_class(obj).data)
+        except Exception as err:
+            raise BadRequest(str(err))
 
 
 class APIModelPatchHandler(APIModelBaseHandler):

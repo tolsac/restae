@@ -19,6 +19,9 @@ setup(
     python_requires=">=2.7, !=3.0.*, !=3.1.*, !=3.2.*, !=3.3.*",
     zip_safe=False,
     licence='BSD',
+    entry_points={'console_scripts': [
+        'restae-admin = restae.management:execute_from_command_line',
+    ]},
     classifiers=[
         'Development Status :: 5 - Production/Stable',
         'Environment :: Web Environment',
