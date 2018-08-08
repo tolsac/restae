@@ -5,3 +5,4 @@ import mock
 
 Key = mock.MagicMock()
 Cursor = mock.MagicMock()
+ModelAttribute = mock.MagicMock()

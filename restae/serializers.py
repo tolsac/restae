@@ -5,6 +5,7 @@ import datetime
 import collections
 
 from dateutil import parser
+from google.appengine.ext.ndb import ModelAttribute
 
 from exceptions import ValidationError, SerializerError
 from helpers import get_key_from_urlsafe, KEY_CLASS
@@ -176,6 +177,13 @@ class DatetimeField(Field):
         return value.isoformat()
 
 
+class MethodField(Field):
+    def output(self, obj):
+        getattr()
+
+
+
+
 TYPE_MAPPING = {
     'IntegerProperty': IntegerField,
     'FloatProperty': FloatField,
@@ -186,14 +194,22 @@ TYPE_MAPPING = {
     'KeyProperty': KeyField
 }
 
+READ_ONLY_FIELDS = [
+    MethodField
+]
+
 
 class Serializer(Field):
-    def get_class_fields(self):
+    def get_class_fields(self, read_only=False):
         _attrs = {}
 
         for key, value in self.__class__.__dict__.iteritems():
             if issubclass(value.__class__, Field):
-                _attrs[key] = value
+                if read_only is False:
+                    if value.__class__ not in READ_ONLY_FIELDS:
+                        _attrs[key] = value
+                else:
+                    _attrs[key] = value
         return _attrs
 
     def input(self, data):
@@ -217,22 +233,34 @@ class Serializer(Field):
     def output(self, obj):
         payload = {}
 
-        for attr, field in self.get_class_fields().iteritems():
+        for attr, field in self.get_class_fields(read_only=True).iteritems():
             _source = field.source or attr
-            payload.update({
-                attr: field.output_many(getattr(obj, _source))
-            })
+
+            if field.__class__ == MethodField:
+                _method = getattr(self, 'get_{}'.format(attr), None)
+                if _method is None:
+                    raise SerializerError('missing method get_{} for field MethodField'.format(attr))
+                payload.update({
+                    attr: _method(obj)
+                })
+            else:
+                payload.update({
+                    attr: field.output_many(getattr(obj, _source))
+                })
         payload['key'] = obj.key.urlsafe()
         return payload
 
 
 class ModelSerializer(Serializer):
-    def get_class_fields(self):
+    def get_class_fields(self, read_only=False):
         _attrs = {}
 
         _meta = getattr(self, 'Meta', None)
         if _meta.fields == '__all__':
-            _fields = _meta.model._properties.keys()
+            _fields = []
+            for key, val in dict(_meta.model.__dict__).iteritems():
+                if issubclass(val.__class__, ModelAttribute):
+                    _fields.append(key)
         else:
             _fields = _meta.fields
 

@@ -64,7 +64,6 @@ class BaseTestCase(unittest.TestCase):
 
 
 class SerializerTestCase(BaseTestCase):
-
     def test_serializer_output(self):
         entity = UserModel(
             email='admin@restae.com',
@@ -179,6 +178,45 @@ class SerializerTestCase(BaseTestCase):
             contact = serializers.StringField(source='email')
 
         serialized = UserSerializer(user).data
+
+        self.assertDictEqual(
+            serialized,
+            {
+                'key': user.key.urlsafe(),
+                'contact': 'admin@restae.com'
+            }
+        )
+
+    def test_serializer_method(self):
+        user = UserModel(email='admin@restae.com')
+        user.put()
+
+        class UserMethodSerializer(serializers.Serializer):
+            toto = serializers.MethodField()
+
+            def get_toto(self, obj):
+                return 42
+
+        serialized = UserMethodSerializer(user).data
+        self.assertDictEqual(
+            serialized,
+            {
+                'key': user.key.urlsafe(),
+                'toto': 42
+            }
+        )
+
+    def test_serializer_method_2(self):
+        user = UserModel(email='admin@restae.com')
+        user.put()
+
+        class UserMethodSerializer(serializers.Serializer):
+            contact = serializers.MethodField()
+
+            def get_contact(self, obj):
+                return obj.email
+
+        serialized = UserMethodSerializer(user).data
         self.assertDictEqual(
             serialized,
             {
