@@ -404,10 +404,9 @@ class APIModelDestroyHandler(APIModelBaseHandler):
     """
     def destroy(self, request, key=None):
         """
-
         :return: :py:class:`restae.response.JsonResponse`
         """
-        self.pre_delete(obj)
+        self.pre_delete(key)
         key.delete()
         return JsonResponse()
 
