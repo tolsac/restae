@@ -8,14 +8,17 @@ import traceback
 import webapp2
 import logging
 
+from google.appengine.ext import ndb
+from google.appengine.ext.ndb import KeyProperty
 from webob import Response
 
 from exceptions import NotFound, NotAuthorized, Forbidden, MissingParameter, BadRequest, MissingBody
 from response import CorsResponse, JsonResponse
-from helpers import get_object_from_urlsafe, get_middlewares, cached_property, get_key_from_urlsafe, \
-    get_model_class_from_query, load_class
+from helpers import get_middlewares, cached_property, get_key_from_urlsafe, \
+    get_model_class_from_query, load_class, get_model_fields
 from restae.conf import DEFAULT_PAGINATION_CLASS
 from restae.exceptions import DispatchError
+from restae.serializers import TYPE_MAPPING
 
 
 class BaseHandler(webapp2.RequestHandler):
@@ -141,7 +144,7 @@ class BaseHandler(webapp2.RequestHandler):
         if self.request.body:
             try:
                 json_body = json.loads(self.request.body)
-                setattr('__cached_body', json_body)
+                setattr(self, '__cached_body', json_body)
                 return json_body
             except Exception as err:
                 logging.warning('Request is missing a body: %s -> %s',
@@ -271,6 +274,36 @@ class APIModelBaseHandler(BaseHandler):
         """
         return self.queryset
 
+    def filter_queryset(self):
+        """
+        Default queryset filter. List all model properties and compare to query params.
+        All intersected attributes are applied ad filters on the queryset
+        """
+        if not self.query_params:
+            return self.queryset
+
+        _model = get_model_class_from_query(self.queryset)
+        fields = get_model_fields(_model)
+        queryset = self.get_queryset()
+
+        for field_name, field_class in fields:
+            if field_name in self.query_params:
+                filter_value = self.query_params[field_name]
+                if field_class == KeyProperty:
+                    _key = get_key_from_urlsafe(filter_value)
+                    queryset = queryset.filter(ndb.GenericProperty(field_name) == _key)
+                else:
+                    """
+                    We use the property serializer to be able to make the filter with the good type.
+                    For instance if we want to filter an IntergerProperty, the self.query_params, will
+                    have only string values. We need to use the serializer to cast the param to the
+                    good type.
+                    """
+                    filter_value = TYPE_MAPPING[field_class.__name__](data=filter_value).data
+                    queryset = queryset.filter(ndb.GenericProperty(field_name) == filter_value)
+
+        return queryset
+
     def get_serializer(self, *args, **kwargs):
         """
         Method used to retrieves the serializer. Must be overloaded for custom operations
@@ -323,13 +356,14 @@ class APIModelListHandler(APIModelBaseHandler):
 
         :return: :py:class:`restae.response.JsonResponse`
         """
-        page = self.paginate_queryset(self.get_queryset())
+        queryset = self.filter_queryset()
+        page = self.paginate_queryset(queryset)
 
         if page is not None:
             serializer = self.get_serializer()(page, many=True)
             return self.get_paginated_response(serializer.data)
 
-        serializer = self.get_serializer()(self.get_queryset(), many=True)
+        serializer = self.get_serializer()(queryset, many=True)
         return Response(serializer.data)
 
 

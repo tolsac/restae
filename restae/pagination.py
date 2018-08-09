@@ -25,7 +25,7 @@ class BasePagination(object):
         return data['results']
 
     def get_page_size(self, request):
-        return request.GET.get('page_size', settings.get('PAGE_SIZE', DEFAULT_PAGE_SIZE))
+        return int(request.GET.get('page_size', settings.get('PAGE_SIZE', DEFAULT_PAGE_SIZE)))
 
 
 class CursorPagination(BasePagination):

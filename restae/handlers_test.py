@@ -5,6 +5,7 @@ import unittest
 import sys
 import webapp2
 import webtest
+import json
 
 import dev_appserver
 from webob import Response
@@ -206,6 +207,160 @@ class APIHandlerTestCase(unittest.TestCase):
     def test_dispatch_delete(self):
         response = self.testapp.delete('/user/')
         self.assertEquals(response.body, 'delete')
+
+
+class APIModelHandlerFilterTestCase(unittest.TestCase):
+    def setUp(self):
+        class Author(ndb.Model):
+            name = ndb.StringProperty()
+            lang = ndb.StringProperty()
+
+        class AuthorSerializer(UserModelSerializer):
+            class Meta:
+                model = Author
+                fields = '__all__'
+
+        class Book(ndb.Model):
+            name = ndb.StringProperty()
+            author = ndb.KeyProperty(Author)
+            page_count = ndb.IntegerProperty()
+
+        class BookSerializer(UserModelSerializer):
+            class Meta:
+                model = Book
+                fields = '__all__'
+
+        class BookModelHandler(APIModelHandler):
+            queryset = Book.query()
+            serializer_class = BookSerializer
+
+        class AuthorModelHandler(APIModelHandler):
+            queryset = Author.query()
+            serializer_class = AuthorSerializer
+
+        self.testbed = testbed.Testbed()
+        self.testbed.activate()
+        self.testbed.init_datastore_v3_stub()
+        self.testbed.init_memcache_stub()
+
+        ndb.get_context().clear_cache()
+
+        router = Router()
+        router.register('book', BookModelHandler)
+        router.register('author', AuthorModelHandler)
+
+        app = webapp2.WSGIApplication(router.urls)
+        self.testapp = webtest.TestApp(app)
+
+        self.author_1 = Author(
+            name='Azomov',
+            lang='US'
+        )
+        self.author_1.put()
+        self.author_2 = Author(
+            name='Barjavel',
+            lang='FR'
+        )
+        self.author_2.put()
+
+        self.book_1 = Book(
+            name='Fondation',
+            page_count=1337,
+            author=self.author_1.key
+        )
+        self.book_1.put()
+
+        self.book_2 = Book(
+            name='Ravages',
+            page_count=250,
+            author=self.author_2.key
+        )
+        self.book_2.put()
+
+    def test_key_filter_backend(self):
+        response = self.testapp.get('/book/?author={}'.format(
+            self.author_1.key.urlsafe()
+        ))
+        json_response = json.loads(response.body)
+        self.assertDictEqual(
+            json_response,
+            {
+                u'count': 1,
+                u'next': None,
+                u'results': [
+                    {
+                        u'name': u'Fondation',
+                        u'page_count': 1337,
+                        u'author': self.author_1.key.urlsafe(),
+                        u'key': self.book_1.key.urlsafe()
+                    }
+                ]
+            }
+        )
+
+    def test_key_filter_backend_no_results(self):
+        response = self.testapp.get('/book/?author={}'.format(
+            self.book_1.key.urlsafe()
+        ))
+        json_response = json.loads(response.body)
+        self.assertDictEqual(
+            json_response,
+            {
+                u'count': 0,
+                u'next': None,
+                u'results': []
+            }
+        )
+
+    def test_key_filter_backend_invalid_filter(self):
+        response = self.testapp.get('/book/?toto={}'.format(
+            42
+        ))
+        json_response = json.loads(response.body)
+
+        self.assertDictEqual(
+            json_response,
+            {
+                u'count': 2,
+                u'next': None,
+                u'results': [
+                    {
+                        u'page_count': 1337,
+                        u'name': u'Fondation',
+                        u'key': u'agx0ZXN0YmVkLXRlc3RyCgsSBEJvb2sYAww',
+                        u'author': u'agx0ZXN0YmVkLXRlc3RyDAsSBkF1dGhvchgBDA'
+                    },
+                    {
+                        u'page_count': 250,
+                        u'name': u'Ravages',
+                        u'key': u'agx0ZXN0YmVkLXRlc3RyCgsSBEJvb2sYBAw',
+                        u'author': u'agx0ZXN0YmVkLXRlc3RyDAsSBkF1dGhvchgCDA'}
+                ]
+            }
+        )
+
+    def test_key_filter_backend_multiple_filter(self):
+        response = self.testapp.get('/book/?page_count=1337&author={}'.format(
+            self.author_1.key.urlsafe()
+        ))
+        json_response = json.loads(response.body)
+
+        self.assertDictEqual(
+            json_response,
+            {
+                u'count': 1,
+                u'next': None,
+                u'results': [
+                    {
+                        u'name': u'Fondation',
+                        u'page_count': 1337,
+                        u'author': self.author_1.key.urlsafe(),
+                        u'key': self.book_1.key.urlsafe()
+                    }
+                ]
+            }
+        )
+
 
 
 if __name__ == '__main__':

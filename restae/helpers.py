@@ -5,6 +5,7 @@ import importlib
 import threading
 
 from google.appengine.ext import ndb
+from google.appengine.ext.ndb import ModelAttribute
 
 from restae.conf import settings
 
@@ -95,6 +96,18 @@ def load_class(full_class_string):
     module = importlib.import_module(module_path)
     # Finally, we retrieve the Class
     return getattr(module, class_str, None)
+
+
+def get_model_fields(model):
+    """
+    For a given model, returns all fields with their names
+    """
+    _fields = []
+    for key, val in dict(model.__dict__).iteritems():
+        if issubclass(val.__class__, ModelAttribute):
+            _fields.append((key, val.__class__))
+
+    return _fields
 
 
 def get_middlewares():
