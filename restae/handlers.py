@@ -32,6 +32,7 @@ class BaseHandler(webapp2.RequestHandler):
         self.env = {}
         self.query_params = {}
         self.user = None
+        self.action = None
 
     @cached_property
     def middlewares(self):
@@ -49,6 +50,8 @@ class BaseHandler(webapp2.RequestHandler):
 
         :return: :py:class:`webob.Response`
         """
+        self.action = self.request.method.lower()
+
         return self.apply_dispatch()
 
     def apply_dispatch(self):
@@ -76,13 +79,15 @@ class BaseHandler(webapp2.RequestHandler):
             self.env = self.request.GET.env
 
             for middleware in self.middlewares:
-                middleware.process_request(self.request)
+                if middleware.activate_on_method(self.request.method.upper()):
+                    middleware.process_request(self.request)
 
             self.route_args = self.get_route_args()
             response = self.do_dispatch()
 
             for middleware in self.middlewares:
-                middleware.process_response(self.request, response)
+                if middleware.activate_on_method(self.request.method.upper()):
+                    middleware.process_response(self.request, response)
 
             return response
         except NotFound as nf:
@@ -108,12 +113,18 @@ class BaseHandler(webapp2.RequestHandler):
             logging.error(traceback.format_exc())
             return self.handle_exception(err, self.app.debug)
 
+    def check_action_permissions(self):
+        return True
+
     def do_dispatch(self):
         """
         Function that does the dispatch job
 
         :return: :py:class:`webob.Response`
         """
+        if self.check_action_permissions() is False:
+            raise NotAuthorized()
+
         return super(BaseHandler, self).dispatch()
 
     def get_body(self):
@@ -122,9 +133,15 @@ class BaseHandler(webapp2.RequestHandler):
 
         :return: JSON serialized data as :py:class:`dict` instance.
         """
+        _cached_body = getattr(self, '__cached_body', None)
+
+        if _cached_body is not None:
+            return _cached_body
+
         if self.request.body:
             try:
                 json_body = json.loads(self.request.body)
+                setattr('__cached_body', json_body)
                 return json_body
             except Exception as err:
                 logging.warning('Request is missing a body: %s -> %s',
@@ -171,8 +188,15 @@ class APIModelBaseHandler(BaseHandler):
     serializer_class = None
     pagination_class = load_class(DEFAULT_PAGINATION_CLASS)
 
+    def check_object_permissions(self, request, obj):
+        """
+        Returns always True by default. Override this method to
+        get a object level permissions checks
+        """
+        return True
+
     def get_object(self, urlsafe=None, query_param=None, lookup_field=None, raise_exception=True):
-        _object = None
+        _key = None
         _lookup_field = lookup_field or self.lookup_field
         _query_param = query_param or self.query_param
 
@@ -201,9 +225,9 @@ class APIModelBaseHandler(BaseHandler):
                 else:
                     urlsafe = urlsafe_from_request
 
-            _object = get_object_from_urlsafe(urlsafe)
-            # if not _object.check_object_permissions(self.user):
-            #     raise NotAuthorized
+            _key = get_key_from_urlsafe(urlsafe)
+            if not self.check_object_permissions(self.request, _key):
+                raise NotAuthorized('You are not authorized to access this resource')
         except Exception as err:
             logging.error('Error in get_object: %s -> %s\n%s',
                           err.__class__.__name__,
@@ -212,7 +236,7 @@ class APIModelBaseHandler(BaseHandler):
             if raise_exception:
                 raise NotFound
         finally:
-            return _object
+            return _key
 
     @property
     def paginator(self):
@@ -251,7 +275,19 @@ class APIModelBaseHandler(BaseHandler):
         """
         Method used to retrieves the serializer. Must be overloaded for custom operations
         """
-        return self.serializer_class(*args, **kwargs)
+        return self.serializer_class
+
+    def post_save(self, obj, created=True):
+        """
+        Method called after each call to .put()
+        """
+        pass
+
+    def pre_delete(self, obj):
+        """
+        Method called just before calling key.delete()
+        """
+        pass
 
 
 class APIHandler(BaseHandler):
@@ -281,7 +317,7 @@ class APIModelListHandler(APIModelBaseHandler):
     """
     ModelHandler that perform a generic list operation
     """
-    def list(self, request, **kwargs):
+    def list(self, request):
         """
         List operation
 
@@ -290,7 +326,7 @@ class APIModelListHandler(APIModelBaseHandler):
         page = self.paginate_queryset(self.get_queryset())
 
         if page is not None:
-            serializer = self.get_serializer(page, many=True)
+            serializer = self.get_serializer()(page, many=True)
             return self.get_paginated_response(serializer.data)
 
         serializer = self.get_serializer()(self.get_queryset(), many=True)
@@ -301,7 +337,7 @@ class APIModelCreateHandler(APIModelBaseHandler):
     """
     ModelHandler that perform a generic create operation
     """
-    def create(self, request, **kwargs):
+    def create(self, request):
         """
 
         :return: :py:class:`restae.response.JsonResponse`
@@ -309,6 +345,7 @@ class APIModelCreateHandler(APIModelBaseHandler):
         _model = get_model_class_from_query(self.get_queryset())
         obj = _model(**self.get_serializer()(data=self.get_body()).data)
         obj.put()
+        self.post_save(obj, created=True)
         return JsonResponse(data=self.get_serializer()(obj).data)
 
 
@@ -328,7 +365,7 @@ class APIModelRetrieveHandler(APIModelBaseHandler):
         except Exception:
             raise NotFound
 
-        return JsonResponse(data=self.serializer_class(obj).data)
+        return JsonResponse(data=self.get_serializer()(obj).data)
 
 
 class APIModelUpdateHandler(APIModelBaseHandler):
@@ -340,8 +377,8 @@ class APIModelUpdateHandler(APIModelBaseHandler):
             obj = key.get()
             obj.update(self.get_body())
             obj.put()
-
-            return JsonResponse(data=self.serializer_class(obj).data)
+            self.post_save(obj, created=False)
+            return JsonResponse(data=self.get_serializer()(obj).data)
         except Exception as err:
             raise BadRequest(str(err))
 
@@ -351,7 +388,14 @@ class APIModelPatchHandler(APIModelBaseHandler):
     ModelHandler that perform a generic patch operation
     """
     def partial_update(self, request, key=None):
-        raise NotImplementedError
+        try:
+            obj = key.get()
+            obj.update(self.get_body())
+            obj.put()
+            self.post_save(obj, created=False)
+            return JsonResponse(data=self.get_serializer()(obj).data)
+        except Exception as err:
+            raise BadRequest(str(err))
 
 
 class APIModelDestroyHandler(APIModelBaseHandler):
@@ -363,6 +407,7 @@ class APIModelDestroyHandler(APIModelBaseHandler):
 
         :return: :py:class:`restae.response.JsonResponse`
         """
+        self.pre_delete(obj)
         key.delete()
         return JsonResponse()
 
@@ -385,6 +430,10 @@ class APIModelHandler(APIModelMixinHandler):
         matched route, and if not it'll use the method correspondent to the
         request method (``get()``, ``post()`` etc).
         """
+
+        if self.request.method.upper() == 'OPTIONS':
+            return CorsResponse()
+
         route_args = self.get_route_args()
         route_kwargs = {}
         matched_url = None
@@ -399,17 +448,20 @@ class APIModelHandler(APIModelMixinHandler):
 
         if matched_url.route.detail is True:
             try:
-                route_kwargs['key'] = get_key_from_urlsafe(route_args['urlsafe'])
+                route_kwargs['key'] = self.get_object(urlsafe=route_args['urlsafe'])
             except Exception:
                 return JsonResponse(status=400, data='Given urlsafe is invalid')
 
         if self.request.method.lower() not in matched_url.route.mapping.keys():
             raise DispatchError('Invalid method {}'.format(self.request.method))
 
-        method = getattr(self, matched_url.route.mapping[self.request.method.lower()], None)
+        self.action = matched_url.route.mapping[self.request.method.lower()]
+        method = getattr(self, self.action, None)
         # The handler only receives *args if no named variables are set.
         args, kwargs = route_args, route_kwargs
         if kwargs:
             args = ()
 
+        if self.check_action_permissions() is False:
+            raise NotAuthorized()
         return method(self, *args, **kwargs)

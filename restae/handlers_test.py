@@ -50,9 +50,8 @@ class DynamicUserHandler(APIModelHandler):
         return Response(body='toto')
 
     @action(methods=['GET'], detail=True)
-    def tata(self, *args, **kwargs):
-        entity = self.get_object()
-        return Response(body=entity.email)
+    def tata(self, request, key):
+        return Response(body=key.get().email)
 
 
 class DynamicAPIModelHandlerTestCase(unittest.TestCase):

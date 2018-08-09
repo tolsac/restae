@@ -267,6 +267,73 @@ class ModelSerializerTestCase(BaseTestCase):
             }
         )
 
+    def test_with_custom_attrs(self):
+        class UserDetailSerializer(UserModelSerializer):
+            phones = serializers.MethodField()
+
+            def get_phones(self, obj):
+                return ['0622380111']
+
+            class Meta:
+                model = UserModel,
+                fields = ['first_name', 'last_name', 'email', 'age', 'phones']
+
+        entity = UserModel(
+            email='admin@restae.com',
+            first_name='admin',
+            last_name='restae',
+            age=28
+        )
+        entity.put()
+        serialized = UserDetailSerializer(entity).data
+
+        self.assertDictEqual(
+            serialized,
+            {
+                'key': entity.key.urlsafe(),
+                'email': u'admin@restae.com',
+                'first_name': u'admin',
+                'last_name': u'restae',
+                'age': 28,
+                'phones': ['0622380111']
+            }
+        )
+
+    def test_key_in_key(self):
+        class AllFieldsSerializer(serializers.ModelSerializer):
+            class Meta:
+                model = AllFields
+                fields = '__all__'
+
+        user = UserModel(email='admin@restae.com')
+        user.put()
+
+        all_fields = AllFields(**{
+            'float_val': 3.14,
+            'int_val': 42,
+            'datetime_val': datetime.datetime(2018, 1, 1, 0, 0),
+            'bool_val': True,
+            'string_val': 'restae',
+            'text_val': 'framework',
+            'user_val': user.key
+        })
+        all_fields.put()
+
+        serialized = AllFieldsSerializer(all_fields).data
+        self.assertDictEqual(
+            serialized,
+            {
+                'float_val': 3.14,
+                'int_val': 42,
+                'datetime_val': '2018-01-01T00:00:00',
+                'bool_val': True,
+                'string_val': u'restae',
+                'text_val': u'framework',
+                'user_val': user.key.urlsafe(),
+                'key': all_fields.key.urlsafe()
+            }
+        )
+
 
 if __name__ == '__main__':
     unittest.main()

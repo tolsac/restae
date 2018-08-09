@@ -154,9 +154,9 @@ class KeyField(Field):
             raise ValidationError('Field: Unknown Key value: {}'.format(value))
 
     def output(self, value):
-        if not self.validate_base_type(value):
+        if not self.validate_base_type(value) and value is not None:
             raise ValidationError('Field: Needs a Key class, {} given'.format(value.__class__.__name__))
-        return value.urlsafe()
+        return value.urlsafe() if value else None
 
 
 class DatetimeField(Field):
@@ -178,10 +178,7 @@ class DatetimeField(Field):
 
 
 class MethodField(Field):
-    def output(self, obj):
-        getattr()
-
-
+    pass
 
 
 TYPE_MAPPING = {
@@ -269,10 +266,18 @@ class ModelSerializer(Serializer):
                 _attrs[field] = KeyField()
             else:
                 try:
-                    _attrs[field] = TYPE_MAPPING[_meta.model._properties[field].__class__.__name__]()
+                    if isinstance(_meta.model, tuple):
+                        _meta.model = _meta.model[0]
+                    if field.capitalize() in _meta.model._properties:
+                        _attrs[field] = TYPE_MAPPING[_meta.model._properties[field.capitalize()].__class__.__name__]()
+                    else:
+                        _attrs[field] = TYPE_MAPPING[_meta.model._properties[field].__class__.__name__]()
                 except KeyError:
-                    raise SerializerError('Field {} doest not exists on {} or its type is not supported yet'.format(
-                        field, _meta.model.__class__.__name__
-                    ))
+                    if getattr(self, 'get_{}'.format(field), None) is not None:
+                        _attrs[field] = MethodField()
+                    else:
+                        raise SerializerError('Field {} doest not exists on {} or its type is not supported yet'.format(
+                            field, _meta.model.__name__
+                        ))
         return _attrs
 

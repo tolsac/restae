@@ -7,24 +7,15 @@ import collections
 import webob
 import json
 
+from restae.conf import settings
+
 
 class CorsResponse(webob.Response):
     def __init__(self, *args, **kwargs):
         super(CorsResponse, self).__init__(*args, **kwargs)
-        self.headers['Access-Control-Allow-Origin'] = '*'
-        self.headers['Access-Control-Allow-Headers'] = ', '.join([
-            'Authorization',
-            'Access-Control-Allow-Headers',
-            'Origin',
-            'Accept',
-            'X-Requested-With',
-            'Content-Type',
-            'Access-Control-Request-Method',
-            'Access-Control-Request-Headers'
-        ])
-        self.headers['Access-Control-Allow-Methods'] = ', '.join([
-            'POST', 'GET', 'PUT', 'PATCH', 'DELETE'
-        ])
+        self.headers['Access-Control-Allow-Origin'] = ', '.join(settings.get('CORS_ALLOW_ORIGIN'))
+        self.headers['Access-Control-Allow-Headers'] = ', '.join(settings.get('CORS_ALLOW_HEADERS'))
+        self.headers['Access-Control-Allow-Methods'] = ', '.join(settings.get('CORS_ALLOW_METHODS'))
 
 
 class JsonResponse(CorsResponse):
@@ -42,5 +33,5 @@ class JsonResponse(CorsResponse):
             self.body = json.dumps({
                 'message': data
             })
-        else:
+        elif data is not None:
             self.body = data

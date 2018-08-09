@@ -81,7 +81,7 @@ def get_object_from_urlsafe(urlsafe):
     """
     Build a Key with given urlsafe and get the object
     """
-    return get_key_from_urlsafe(urlsafe).get()
+    return get_key_from_urlsafe(urlsafe)
 
 
 def load_class(full_class_string):
